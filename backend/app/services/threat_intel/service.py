@@ -78,6 +78,7 @@ def correlate(db: Session) -> dict:
             if vuln is None:
                 vuln = Vulnerability(id=info["id"])
                 db.add(vuln)
+                db.flush([vuln])  # the finding below references it; no ORM relationship orders the inserts
                 vulnerabilities[info["id"]] = vuln
             vuln.aliases, vuln.summary, vuln.severity = info["aliases"], info["summary"], info["severity"]
             vuln.cvss_score, vuln.cvss_vector, vuln.references, vuln.url = info["cvss_score"], info["cvss_vector"], info["references"], info["url"]

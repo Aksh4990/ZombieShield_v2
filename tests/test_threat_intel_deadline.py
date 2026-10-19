@@ -105,3 +105,60 @@ def test_interrupted_runs_are_failed_on_startup(client, analyst):
         assert run.status == "FAILED" and "restarted" in run.error
         assert run.stages[1]["status"] == "FAILED" and run.stages[0]["status"] == "SUCCEEDED"
     assert client.post("/pipeline/run", headers=analyst, json={}).status_code == 202
+
+
+def test_correlate_stores_new_vulnerabilities_before_their_findings(monkeypatch, tmp_path):
+    """Regression: on PostgreSQL the findings were inserted before the vulnerabilities they reference."""
+    import json
+    import shutil
+    from pathlib import Path
+
+    from app.db.session import SessionLocal
+    from app.models import Component, ThreatFinding, Vulnerability
+    from app.services.threat_intel import service
+
+    settings = get_settings()
+    cache = tmp_path / "cache"
+    shutil.copytree(Path(__file__).resolve().parents[1] / "backend" / "data" / "threat_cache", cache)
+    monkeypatch.setattr(settings, "threat_cache_dir", str(cache))
+    monkeypatch.setattr(settings, "threat_intel_mode", "offline")
+    feeds._offline_index.cache_clear()
+    index = json.loads((cache / "osv_index.json").read_text())
+    assert index["npm:morgan"]  # the bundled Sock Shop cache knows morgan advisories
+
+    with SessionLocal() as db:
+        components = [Component(service_name="front-end", ecosystem="npm", name=name, version=version, purl=f"pkg:npm/{name}@{version}", manifest="package.json")
+                      for name, version in (("morgan", "1.7.0"), ("express", "4.13.4"), ("async", "2.0.1"))]
+        db.add_all(components)
+        db.commit()
+        monkeypatch.setattr(service, "collect_components", lambda _db: components)
+        result = service.correlate(db)
+        db.commit()
+        assert result["findings"] >= 2 and result["feed"].startswith("offline")
+        assert db.query(ThreatFinding).count() == result["findings"]
+        assert {f.vulnerability_id for f in db.query(ThreatFinding)} <= {v.id for v in db.query(Vulnerability)}
+        again = service.correlate(db)  # re-running with existing vulnerabilities must also work
+        db.commit()
+        assert again["findings"] == result["findings"]
+    feeds._offline_index.cache_clear()
+
+
+def test_failed_stage_with_huge_error_is_recorded(monkeypatch):
+    from app.db.session import SessionLocal
+    from app.models import PipelineRun
+    from app.services import pipeline
+
+    def explode(db, options):
+        raise RuntimeError("x" * 20000)  # e.g. a database error that embeds a whole INSERT statement
+
+    assert pipeline._lock.acquire(timeout=120)  # let any run started by an earlier test finish first
+    pipeline._lock.release()
+    monkeypatch.setattr(pipeline, "STAGES", [("boom", "Boom", explode)])
+    with SessionLocal() as db:
+        run = pipeline.create_run(db, "tester")
+    pipeline.execute(run.id)
+    with SessionLocal() as db:
+        stored = db.get(PipelineRun, run.id)
+        assert stored.status == "FAILED"
+        assert len(stored.error) <= pipeline.RUN_ERROR_LIMIT and "truncated" in stored.error
+        assert len(stored.stages[0]["error"]) <= pipeline.STAGE_ERROR_LIMIT

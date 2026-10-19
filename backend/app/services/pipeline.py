@@ -108,6 +108,14 @@ STAGES: list[tuple[str, str, Callable]] = [
 ]
 
 
+RUN_ERROR_LIMIT = 3900  # PipelineRun.error is VARCHAR(4000)
+STAGE_ERROR_LIMIT = 1000
+
+
+def _short(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 20] + " ... [truncated]"
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -146,11 +154,7 @@ def execute(run_id: uuid.UUID) -> None:
                 except Exception as exc:  # stage failure stops the run but is recorded
                     db.rollback()
                     log.exception("Pipeline stage %s failed", key)
-                    stages = [dict(stage) for stage in run.stages]
-                    stages[index].update(status="FAILED", finished_at=_now(), error=str(exc))
-                    run.stages, run.status, run.error = stages, "FAILED", f"{key}: {exc}\n{traceback.format_exc(limit=3)}"
-                    run.finished_at = datetime.now(timezone.utc)
-                    db.commit()
+                    _record_failure(db, run, index, key, exc)
                     return
                 stages = [dict(stage) for stage in run.stages]
                 stages[index].update(status=status, finished_at=_now(), result=result)
@@ -161,6 +165,24 @@ def execute(run_id: uuid.UUID) -> None:
             db.commit()
     finally:
         _lock.release()
+
+
+def _record_failure(db: Session, run: PipelineRun, index: int, key: str, exc: Exception) -> None:
+    """Store a failed stage. Error texts are truncated to fit their columns: database errors can embed
+    whole SQL statements, and a failed save here used to leave the run stuck in RUNNING forever."""
+    message = f"{type(exc).__name__}: {exc}"
+    stages = [dict(stage) for stage in run.stages]
+    stages[index].update(status="FAILED", finished_at=_now(), error=_short(message, STAGE_ERROR_LIMIT))
+    run.stages, run.status, run.finished_at = stages, "FAILED", datetime.now(timezone.utc)
+    run.error = _short(f"{key}: {message}\n{traceback.format_exc(limit=3)}", RUN_ERROR_LIMIT)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        log.exception("Could not store the failure details of pipeline run %s; storing a short status instead", run.id)
+        run = db.get(PipelineRun, run.id)
+        run.status, run.finished_at, run.error = "FAILED", datetime.now(timezone.utc), f"{key} failed ({type(exc).__name__}); see the backend log"
+        db.commit()
 
 
 def start_in_background(run_id: uuid.UUID) -> threading.Thread:

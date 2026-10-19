@@ -59,7 +59,8 @@ python scripts/train_endpoint_model.py
 - Sock Shop gateway reloads itself when rules change (`sockshop/gateway/reload-on-change.sh`, guarded by `nginx -t`).
 - Verified on the real Sock Shop repos plus the log fixture with an added attacker: unauthenticated BOLA enumeration on `GET /customers/{id}` scores CRITICAL (REQUIRE_AUTH + RATE_LIMIT proposed), zombie `PUT /cart/{id}` scores HIGH (BLOCK_ROUTE proposed), public catalogue is not asked to require auth; generated rules pass `nginx -t` and were exercised in a live nginx (410 / 401 / 429 as expected).
 - Threat intel online calls have a wall-clock budget (`THREAT_INTEL_TIMEOUT_SECONDS`, default 90 s) and fall back to the offline cache, so a slow feed cannot stall the pipeline; runs left RUNNING by a backend restart are marked FAILED at startup instead of blocking new runs.
-- Tests: `python -m pytest -q` (40 passing)
+- First Docker run (PostgreSQL) found two bugs SQLite tests could not: threat findings were inserted before their vulnerability rows (foreign-key violation), and a failed stage whose error text exceeded 4,000 characters left the run stuck in RUNNING. Both fixed; tests now run SQLite with foreign keys enforced.
+- Tests: `python -m pytest -q` (43 passing)
 
 ## Still to do
 - The traffic anomaly model (IsolationForest, contamination "auto") flags every client in the Sock Shop fixture as UNUSUAL_BEHAVIOUR at least once; stages 6-9 therefore only treat named attack patterns as suspicious. Tuning the anomaly baseline/contamination would make `anomalous_client_count` meaningful again.
