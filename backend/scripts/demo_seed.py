@@ -7,8 +7,8 @@
    shoppers, an old mobile client that still calls PUT /cart/{id} (a route the front-end removed in
    2017), and the orders service's internal Spring Data REST calls that are in no code or spec.
    Sock Shop's own load generator image crashes on current Docker, so it cannot produce this.
-2. Sends REAL requests through the Sock Shop gateway: a logged-in shopper, then an attacker who
-   enumerates customer records without credentials and probes the catalogue with injection payloads.
+2. Sends REAL requests through the Sock Shop gateway as an anonymous attacker who enumerates
+   customer records and probes the catalogue with injection payloads.
 3. Runs the full pipeline and prints what was found.
 
 Safe to run again: the synthetic history is registered once, and every run adds fresh live traffic.
@@ -28,8 +28,6 @@ import httpx
 API = os.environ.get("DEMO_API_URL", "http://localhost:8000")
 GATEWAY = os.environ.get("DEMO_GATEWAY_URL", "http://gateway")
 HISTORY_DIR = Path(os.environ.get("DEMO_DATA_DIR", "/app/data/demo"))
-SHOP_USER, SHOP_PASSWORD = "user", "password"  # Sock Shop's published demo account
-SHOP_CUSTOMER = "57a98d98e4b00679b4a830af"  # that account's customer id in Sock Shop's user-db
 
 
 def say(text: str) -> None:
@@ -77,14 +75,14 @@ def write_history(minutes: int = 45) -> tuple[Path, Path]:
 # ---------------------------------------------------------------- 2. live traffic through the gateway
 
 def live_traffic() -> dict:
-    stats = {"shopper": 0, "enumeration": 0, "enumeration_ok": 0, "injection": 0}
-    with httpx.Client(base_url=GATEWAY, timeout=10, follow_redirects=True) as shop:
-        shop.get("/login", auth=(SHOP_USER, SHOP_PASSWORD))  # sets Sock Shop's logged_in cookie
-        for _ in range(3):
-            for path in ("/catalogue?size=6&page=1", "/tags", "/cart", f"/customers/{SHOP_CUSTOMER}", "/orders"):
-                shop.get(path)
-                stats["shopper"] += 1
-                time.sleep(0.2)
+    """An anonymous attacker: customer-record enumeration and injection probes.
+
+    Only the attacker runs live. Every request from this script reaches the gateway from the same
+    container address, so a scripted "shopper" would look like the same client as the attacker and
+    drag ordinary endpoints into the attack findings. Logged-in shoppers are in the history; during
+    the demo, log in to Sock Shop yourself to show that real shoppers are unaffected by the rules.
+    """
+    stats = {"enumeration": 0, "enumeration_ok": 0, "injection": 0}
     with httpx.Client(base_url=GATEWAY, timeout=10) as attacker:  # no credentials
         for i in range(45):
             response = attacker.get(f"/customers/57a98d98e4b00679b4a8{i:04d}")
@@ -136,9 +134,8 @@ def main() -> int:
 
     try:
         stats = live_traffic()
-        say(f"- Live traffic through the gateway: {stats['shopper']} logged-in shopper requests, "
-            f"{stats['enumeration']} anonymous customer lookups ({stats['enumeration_ok']} answered with data), "
-            f"{stats['injection']} injection probes")
+        say(f"- Live attacker through the gateway: {stats['enumeration']} anonymous customer lookups "
+            f"({stats['enumeration_ok']} answered with data), {stats['injection']} injection probes")
     except httpx.HTTPError as exc:
         say(f"- Could not reach the Sock Shop gateway at {GATEWAY} ({exc}); continuing with the history only")
     time.sleep(3)  # let nginx flush the access log
