@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -21,16 +22,8 @@ def deadline(seconds: float | None = None) -> float:
     return time.monotonic() + (get_settings().threat_intel_timeout_seconds if seconds is None else seconds)
 
 
-def fetch(client: httpx.Client, method: str, url: str, until: float, **kwargs) -> httpx.Response:
-    """One HTTP request that can never outlive `until`.
-
-    httpx's timeout only bounds each connect/read *gap*, so a server that trickles bytes (the CISA
-    feed does this to some clients) can hold a request open indefinitely. Streaming and checking the
-    clock between chunks turns that into a TimeoutException, which callers treat as "feed unavailable".
-    """
+def _fetch_stream(client: httpx.Client, method: str, url: str, until: float, **kwargs) -> httpx.Response:
     remaining = until - time.monotonic()
-    if remaining <= 0:
-        raise httpx.TimeoutException(f"threat-intel time budget exhausted before {method} {url}")
     timeout = httpx.Timeout(min(15.0, remaining), connect=min(5.0, remaining))
     with client.stream(method, url, timeout=timeout, **kwargs) as response:
         body = bytearray()
@@ -39,6 +32,36 @@ def fetch(client: httpx.Client, method: str, url: str, until: float, **kwargs) -
             if time.monotonic() > until:
                 raise httpx.ReadTimeout(f"threat-intel time budget exhausted while downloading {url}", request=response.request)
         return httpx.Response(response.status_code, headers=response.headers, content=bytes(body), request=response.request)
+
+
+def fetch(client: httpx.Client, method: str, url: str, until: float, **kwargs) -> httpx.Response:
+    """One HTTP request that can never outlive `until`.
+
+    httpx's timeouts only bound each connect/read *gap* and do not cover DNS resolution, so a server
+    that trickles bytes, or a resolver that never answers (seen with Docker Desktop on Windows), can
+    hold a request open indefinitely. The request runs on a daemon thread that is abandoned at the
+    deadline, and the caller gets a TimeoutException, which it treats as "feed unavailable".
+    """
+    remaining = until - time.monotonic()
+    if remaining <= 0:
+        raise httpx.TimeoutException(f"threat-intel time budget exhausted before {method} {url}")
+    outcome: dict = {}
+
+    def work() -> None:
+        try:
+            outcome["response"] = _fetch_stream(client, method, url, until, **kwargs)
+        except BaseException as exc:  # handed to the caller below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=work, name="threat-intel-fetch", daemon=True)
+    worker.start()
+    worker.join(remaining + 0.5)
+    if worker.is_alive():
+        log.warning("No answer from %s within the threat-intel budget (DNS or network stall); giving up", url)
+        raise httpx.ConnectTimeout(f"no answer from {url} within the threat-intel time budget (DNS or network stall)")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["response"]
 
 
 def _cache_dir() -> Path:

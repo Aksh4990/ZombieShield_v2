@@ -49,6 +49,23 @@ def test_fetch_gives_up_at_the_deadline_even_when_bytes_keep_arriving(trickle_ur
     assert time.monotonic() - started < 3
 
 
+def test_fetch_gives_up_when_dns_never_answers(monkeypatch):
+    import socket
+
+    real = socket.getaddrinfo
+
+    def hanging(host, *args, **kwargs):
+        if host == "feeds.example.test":
+            time.sleep(30)
+        return real(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", hanging)
+    started = time.monotonic()
+    with httpx.Client(trust_env=False) as client, pytest.raises(httpx.TimeoutException, match="DNS or network stall"):  # no proxy: resolve locally
+        feeds.fetch(client, "GET", "https://feeds.example.test/kev.json", feeds.deadline(1.0))
+    assert time.monotonic() - started < 3
+
+
 def test_slow_feeds_fall_back_to_offline_cache_quickly(trickle_url, monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "threat_intel_mode", "auto")

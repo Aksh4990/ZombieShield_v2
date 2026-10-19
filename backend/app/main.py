@@ -1,4 +1,6 @@
+import faulthandler
 import logging
+import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,6 +14,8 @@ from app.db.session import engine
 from app.services import bootstrap
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+if hasattr(signal, "SIGUSR1"):  # `docker kill -s USR1 <backend>` prints every thread's stack to the container log
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
 
 
 @asynccontextmanager
