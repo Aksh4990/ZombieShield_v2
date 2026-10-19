@@ -1,6 +1,6 @@
 # ZombieShield v2: work-in-progress snapshot
 
-Your original project in `zombieshield_fyp` is untouched. The **backend now runs end to end** (API, pipeline, migrations, Docker, 23 passing tests). The new **frontend is not built yet**; the `frontend/` folder is still a placeholder.
+Your original project in `zombieshield_fyp` is untouched. The **backend runs end to end** (API, pipeline, migrations, Docker) and the **new React frontend** covers every backend feature.
 
 ## Done
 - `backend/app/models/`: new data model (APIs with evidence flags, evidence timeline, users, audit log, sources, pipeline runs, components, vulnerabilities, findings, request log, anomalies, decisions, remediation actions, validation runs)
@@ -63,11 +63,13 @@ python scripts/train_endpoint_model.py
 - End-to-end on Docker (Windows, PostgreSQL, live Sock Shop, 19 Oct 2026): all 9 stages succeed (threat intel via live OSV.dev in seconds). Anonymous enumeration of `GET /customers/{id}` (41 IDs/minute) is flagged as API1/API3 and scores HIGH; a rate-limit rule was approved, applied, reloaded by the gateway (213 of 300 burst requests got 429), verified from traffic and rolled back, all audited. Rate-limit baselines now exclude enumerating/flooding clients.
 - Tests: `python -m pytest -q` (44 passing)
 
+## Frontend (stage 12)
+React 19 + TypeScript + Vite, no UI or chart libraries (inline SVG). Pages: sign-in, overview (inventory-by-lifecycle strip, needs-attention list, risk and remediation status, per-service mix), API inventory with filters, endpoint detail (classification evidence, risk breakdown, security controls + OWASP, evidence timeline, vulnerabilities, gateway rules, ownership edits), pipeline (start runs, live stage progress, history), remediation approval workflow with nginx rule previews and the live gateway config, vulnerabilities and dependencies, traffic (time series, anomalies, live request tail), sources (add/read/disable, one-off OpenAPI or log upload), models & validation (model cards, ground-truth comparison with confusion matrix), users & audit log. Actions follow the backend roles (viewer / analyst / admin). Checked against a seeded backend at desktop and phone widths, including approve → apply through the UI.
+Static files and web pages are no longer recorded as APIs (they are still logged for payload and anomaly analysis).
+
 ## Still to do
-- Static assets fetched before the first discovery run (e.g. `/catalogue/images/*.jpg`, `/`) enter the inventory as SHADOW APIs (30 of 31 HIGH results on the Docker run). Runtime ingestion should skip static files and re-template paths once code/spec templates are known.
 - Sock Shop's load generator image (`weaveworksdemos/load-test:0.1.1`) exits with code 139 on Docker Desktop, so there is no authenticated shopper traffic; without it `REQUIRE_AUTH` cannot be inferred for `/customers/{id}` (by design, credentials must be seen as normal first).
 - The traffic anomaly model (IsolationForest, contamination "auto") flags every client in the Sock Shop fixture as UNUSUAL_BEHAVIOUR at least once; stages 6-9 therefore only treat named attack patterns as suspicious. Tuning the anomaly baseline/contamination would make `anomalous_client_count` meaningful again.
-- Frontend (stage 12): the `frontend/` folder is still the old UI
 - Write `sockshop/ground_truth.json` by hand and run the validation
 - Run the Docker setup on your machine (not tested here: no Docker in my workspace)
 - Apply the paper revisions

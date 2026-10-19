@@ -123,7 +123,7 @@ def proposals_for(api: API, decision: str | None, minute_counts: dict | None, no
     if blocking:
         removed = f" (removed in {api.removed_in_commit[:10]})" if api.removed_in_commit else ""
         out.append({"kind": "BLOCK_ROUTE", "title": f"Retire {target} at the gateway (410 Gone)",
-                    "rationale": f"Zombie endpoint{removed}: {api.classification_reason or 'retired but still receiving traffic'}. "
+                    "rationale": f"Zombie endpoint{removed}: {(api.classification_reason or 'retired but still receiving traffic').strip().rstrip('.')}. "
                                  f"{api.request_count} request(s) from {api.unique_clients} client(s) still reach it; notify them before applying.",
                     "rule": _rule(api, "BLOCK_ROUTE", status=410)})
     if not blocking and _status(api, "authentication") == "NOT_ENFORCED":
