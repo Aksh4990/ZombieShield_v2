@@ -60,8 +60,9 @@ def _discover(db: Session, options: dict) -> dict:
         kwargs = {"from_start": bool(options.get("logs_from_start"))} if source.kind == "runtime_log" else {}
         results.extend(r.as_dict() for r in run_source(db, source, writer, **kwargs))
     writer.commit()
+    static_removed = traffic.purge_static_apis(db)
     traffic.refresh_aggregates(db)
-    return {"sources": len(sources), "apis_added": writer.added, "results": results}
+    return {"sources": len(sources), "apis_added": writer.added, "static_assets_removed": static_removed, "results": results}
 
 
 def _lifecycle(db: Session, options: dict) -> dict:

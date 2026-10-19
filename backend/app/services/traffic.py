@@ -17,6 +17,33 @@ from app.services.normalization import template_runtime_path
 # inventory so a directory-bruteforce scan cannot fill it with fake "shadow APIs".
 _EXISTENCE_STATUSES = set(range(200, 400)) | {400, 401, 403, 405, 409, 410, 415, 422, 429} | set(range(500, 600))
 
+# Web pages and static files served through the same gateway are not API operations. They are still
+# logged (payload and anomaly analysis see them) but never enter the inventory, otherwise every product
+# image becomes a "shadow API".
+STATIC_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".svg", ".ico", ".webp", ".bmp", ".avif", ".css", ".js", ".mjs", ".map",
+                     ".woff", ".woff2", ".ttf", ".otf", ".eot", ".html", ".htm", ".txt", ".pdf", ".mp4", ".webm", ".mp3"}
+
+
+def is_static_asset(method: str, path: str) -> bool:
+    if method.upper() not in {"GET", "HEAD"}:
+        return False
+    if path in ("", "/"):
+        return True
+    last = path.rstrip("/").rsplit("/", 1)[-1].lower()
+    return "." in last and "." + last.rsplit(".", 1)[-1] in STATIC_EXTENSIONS
+
+
+def purge_static_apis(db: Session) -> int:
+    """Remove inventory rows that only ever came from runtime logs and are static assets or web pages."""
+    removed = 0
+    for api in db.scalars(select(API)):
+        runtime_only = all((source or "").startswith("runtime_log:") for source in api.sources or []) and not (
+            api.in_current_spec or api.in_current_code or api.previously_in_spec or api.previously_in_code)
+        if runtime_only and is_static_asset(api.http_method, api.endpoint_path):
+            db.delete(api)  # request_log.api_id is SET NULL; evidence and remediation rows cascade
+            removed += 1
+    return removed
+
 
 def _known_templates(writer: InventoryWriter) -> dict[tuple[str, str], list[str]]:
     by_host: dict[tuple[str, str], list[str]] = defaultdict(list)
@@ -32,7 +59,7 @@ def ingest_log_content(db: Session, writer: InventoryWriter, content: str, *, so
     records, skipped = parse_lines(content)
     templates = _known_templates(writer)
     classifier = payload_model.get_classifier()
-    stats = {"records": len(records), "skipped": skipped, "new_apis": 0, "attacks": 0, "ignored_404": 0}
+    stats = {"records": len(records), "skipped": skipped, "new_apis": 0, "attacks": 0, "ignored_404": 0, "static_assets": 0}
     before = writer.added
     tag = f"runtime_log:{source_name}"
     now = datetime.now(timezone.utc)
@@ -47,7 +74,10 @@ def ingest_log_content(db: Session, writer: InventoryWriter, content: str, *, so
             if label != "normal":
                 stats["attacks"] += 1
         api = None
-        if record.status in _EXISTENCE_STATUSES:
+        static = is_static_asset(record.method, template)
+        if static:
+            stats["static_assets"] += 1
+        elif record.status in _EXISTENCE_STATUSES:
             api, created = writer.get_or_create(organization, record_host, record.service or default_service, record.method, template, ts)
             if tag not in (api.sources or []):
                 api.sources = [*(api.sources or []), tag]
@@ -69,7 +99,7 @@ def ingest_log_content(db: Session, writer: InventoryWriter, content: str, *, so
                 api.attack_request_count = (api.attack_request_count or 0) + 1
             writer.add_evidence(api, "runtime_seen", source_name, f"Observed in runtime traffic ({source_name})",
                                 {"status": record.status}, ts, dedupe_key=f"runtime:{source_name}:{ts.date().isoformat()}")
-        else:
+        elif not static:
             stats["ignored_404"] += 1
         rows.append(RequestLog(
             ts=ts, api_id=api.id if api is not None else None, method=record.method, path=template, status=record.status,

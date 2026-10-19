@@ -19,7 +19,7 @@ NOW = datetime.now(timezone.utc)
 
 def make_api(db, path="/v1/customers/{id}", method="GET", state=LifecycleState.ACTIVE, **extra) -> API:
     api = API(id=uuid.uuid4(), canonical_key=uuid.uuid4().hex, organization="lab", service_name=extra.pop("service_name", "shop"), host="front-end",
-              http_method=method, endpoint_path=path, display_path=path, lifecycle_state=state, sources=[], current_sources=[],
+              http_method=method, endpoint_path=path, display_path=path, lifecycle_state=state, sources=extra.pop("sources", []), current_sources=[],
               spec_security=extra.pop("spec_security", []), ml_explanation=extra.pop("ml_explanation", []), risk_breakdown=[],
               owasp_categories=[], security_controls={}, **extra)
     db.add(api)
@@ -324,3 +324,30 @@ def test_rate_baseline_ignores_the_enumerating_client():
         counts = remediation._client_minute_counts(db)[api.id]
         assert {client for client, _ in counts} == {"shopper"}
         assert remediation.suggested_rate(counts)[0] == remediation.MIN_RATE_PER_MINUTE
+
+
+def test_static_assets_never_enter_the_inventory():
+    """Regression from the first Docker run: product images became 30 'HIGH' shadow APIs."""
+    from app.services import traffic
+    from app.services.inventory import InventoryWriter
+
+    assert traffic.is_static_asset("GET", "/catalogue/images/WAT.jpg") and traffic.is_static_asset("GET", "/")
+    assert traffic.is_static_asset("GET", "/css/style.min.css") and traffic.is_static_asset("HEAD", "/index.html")
+    assert not traffic.is_static_asset("GET", "/catalogue") and not traffic.is_static_asset("POST", "/upload/a.png")
+    assert not traffic.is_static_asset("GET", "/v1.2/orders")
+    lines = "\n".join(
+        '{"ts": "2026-10-19T10:00:0%dZ", "client": "10.0.0.1", "method": "GET", "uri": "%s", "status": 200, "auth": "0"}' % (i, uri)
+        for i, uri in enumerate(["/", "/catalogue/images/WAT.jpg", "/js/client.js", "/catalogue?size=3", "/tags"]))
+    with SessionLocal() as db:
+        stale = make_api(db, path="/catalogue/images/old.jpg", sources=["runtime_log:gw"])  # left over from an earlier run
+        documented = make_api(db, path="/docs/guide.html", in_current_spec=True, sources=["openapi:spec"])
+        db.commit()
+        writer = InventoryWriter(db)
+        stats = traffic.ingest_log_content(db, writer, lines, source_name="gw", organization="lab", host="front-end", default_service="front-end")
+        writer.commit()
+        assert stats["static_assets"] == 3 and stats["new_apis"] == 2
+        assert traffic.purge_static_apis(db) == 1
+        db.commit()
+        paths = {a.endpoint_path for a in db.query(API)}
+        assert paths >= {"/catalogue", "/tags", "/docs/guide.html"} and "/catalogue/images/old.jpg" not in paths
+        assert db.query(RequestLog).filter(RequestLog.path == "/catalogue/images/WAT.jpg").count() == 1  # still logged
