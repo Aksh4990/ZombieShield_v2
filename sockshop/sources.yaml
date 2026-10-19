@@ -1,0 +1,18 @@
+# Evidence sources seeded into ZombieShield on first start (edit freely; the UI can add more).
+# Repositories are cloned into ../discovery-repositories by scripts/setup_sockshop.(ps1|sh).
+defaults:
+  organization: sockshop
+sources:
+  - {name: front-end, kind: git, location: front-end, service_name: front-end, host: front-end}
+  - {name: catalogue, kind: git, location: catalogue, service_name: catalogue, host: catalogue}
+  - {name: user,      kind: git, location: user,      service_name: user,      host: user}
+  - {name: carts,     kind: git, location: carts,     service_name: carts,     host: carts}
+  - {name: orders,    kind: git, location: orders,    service_name: orders,    host: orders}
+  - {name: payment,   kind: git, location: payment,   service_name: payment,   host: payment}
+  - {name: shipping,  kind: git, location: shipping,  service_name: shipping,  host: shipping}
+  - name: gateway-access-log
+    kind: runtime_log
+    location: /workspace/gateway-logs/access.log
+    service_name: front-end
+    host: front-end
+    options: {follow: true}

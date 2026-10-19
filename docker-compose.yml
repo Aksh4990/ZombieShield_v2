@@ -1,0 +1,178 @@
+# ZombieShield platform. `docker compose up --build` starts the platform only.
+# `docker compose --profile sockshop up --build` also starts the Sock Shop reference deployment,
+# an nginx gateway in front of it (JSON access logs), and Sock Shop's official load generator.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-zombieshield}
+      POSTGRES_USER: ${POSTGRES_USER:-zombieshield}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DISCOVERY_GIT_ROOT: /workspace/repositories
+      LAB_CONFIG_PATH: /workspace/config/sources.yaml
+      THREAT_CACHE_DIR: /workspace/threat_cache
+      GATEWAY_RULES_DIR: /workspace/gateway/rules
+    volumes:
+      - ./discovery-repositories:/workspace/repositories:ro
+      - ./sockshop/sources.yaml:/workspace/config/sources.yaml:ro
+      - gateway_logs:/workspace/gateway-logs:ro
+      - ./sockshop/gateway/rules:/workspace/gateway/rules
+      - threat_cache:/workspace/threat_cache
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------ Sock Shop reference target
+  gateway:
+    profiles: ["sockshop"]
+    image: nginx:1.27-alpine
+    volumes:
+      - ./sockshop/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./sockshop/gateway/rules:/etc/nginx/zombieshield:ro
+      - gateway_logs:/var/log/gateway
+    ports:
+      - "8079:80"
+    depends_on: [front-end]
+
+  front-end:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/front-end:0.3.12
+    hostname: front-end
+    restart: always
+    cap_drop: [all]
+    read_only: true
+  catalogue:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/catalogue:0.3.5
+    hostname: catalogue
+    restart: always
+    cap_drop: [all]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+  catalogue-db:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/catalogue-db:0.3.0
+    hostname: catalogue-db
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-}
+      - MYSQL_ALLOW_EMPTY_PASSWORD=true
+      - MYSQL_DATABASE=socksdb
+  carts:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/carts:0.4.8
+    hostname: carts
+    restart: always
+    cap_drop: [all]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid"]
+    environment:
+      - JAVA_OPTS=-Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+  carts-db:
+    profiles: ["sockshop"]
+    image: mongo:3.4
+    hostname: carts-db
+    restart: always
+    tmpfs: ["/tmp:rw,noexec,nosuid"]
+  orders:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/orders:0.4.7
+    hostname: orders
+    restart: always
+    cap_drop: [all]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid"]
+    environment:
+      - JAVA_OPTS=-Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+  orders-db:
+    profiles: ["sockshop"]
+    image: mongo:3.4
+    hostname: orders-db
+    restart: always
+    tmpfs: ["/tmp:rw,noexec,nosuid"]
+  shipping:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/shipping:0.4.8
+    hostname: shipping
+    restart: always
+    cap_drop: [all]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid"]
+    environment:
+      - JAVA_OPTS=-Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+  rabbitmq:
+    profiles: ["sockshop"]
+    image: rabbitmq:3.6.8
+    hostname: rabbitmq
+    restart: always
+  payment:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/payment:0.4.3
+    hostname: payment
+    restart: always
+    cap_drop: [all]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+  user:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/user:0.4.4
+    hostname: user
+    restart: always
+    cap_drop: [all]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    environment:
+      - MONGO_HOST=user-db:27017
+  user-db:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/user-db:0.4.0
+    hostname: user-db
+    restart: always
+    tmpfs: ["/tmp:rw,noexec,nosuid"]
+  # Sock Shop's own load generator (ordinary shopper journeys), pointed at the gateway
+  user-sim:
+    profiles: ["sockshop"]
+    image: weaveworksdemos/load-test:0.1.1
+    cap_drop: [all]
+    read_only: true
+    hostname: user-simulator
+    command: "-d 60 -r 200 -c 2 -h gateway"
+    depends_on: [gateway]
+
+volumes:
+  postgres_data:
+  gateway_logs:
+  threat_cache:

@@ -1,0 +1,19 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+pydantic-settings==2.7.0
+PyYAML==6.0.2
+httpx==0.28.1
+PyJWT==2.10.1
+packaging>=24.0
+# ML: the shipped model artifacts were trained with these exact versions
+scikit-learn==1.9.1
+numpy==2.5.3
+scipy==1.18.1
+pandas==3.0.5
+joblib==1.6.0
+
+# Tests
+pytest==8.3.4

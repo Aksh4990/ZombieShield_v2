@@ -1,0 +1,8 @@
+{
+  "name": "Sock Shop ground truth (fill in by hand, independently of ZombieShield's output)",
+  "instructions": "List every endpoint you have checked. 'expected' is one of ACTIVE, DEPRECATED, SHADOW, ZOMBIE, DECOMMISSIONED. Decide it from the Sock Shop source, docs and the traffic you generated - not from ZombieShield's results. Delete these two example rows.",
+  "endpoints": [
+    {"service": "catalogue", "method": "GET", "path": "/catalogue/{id}", "expected": "ACTIVE", "note": "documented in api-spec/catalogue.json and implemented in transport.go"},
+    {"service": "front-end", "method": "PUT", "path": "/cart/{id}", "expected": "DECOMMISSIONED", "note": "removed in 2017; becomes ZOMBIE only if your traffic still calls it"}
+  ]
+}

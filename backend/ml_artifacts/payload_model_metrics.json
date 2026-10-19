@@ -1,0 +1,213 @@
+{
+  "model": "payload_attack_classifier",
+  "trained_at": "2026-10-19T06:29:01.132018+00:00",
+  "selected_model": "Logistic Regression",
+  "decision_threshold": 0.85,
+  "selection_rule": "highest mean PR-AUC across the CSIC 2010 and HttpParams held-out test sets",
+  "features": "TF-IDF character 1-4 grams over parameter values and unusual path segments only (no parameter names, no ordinary paths)",
+  "pre_filter": "values made only of letters, digits, spaces and . , @ + - (no '--') are treated as inert and score 0; every test row is still counted in the metrics",
+  "inert_share": {
+    "csic2010_test": 0.3105,
+    "httpparams_test": 0.5847
+  },
+  "datasets": {
+    "csic2010": {
+      "rows_after_dedup": 25586,
+      "train": 19189,
+      "test": 6397,
+      "attack_share": 0.6239,
+      "source": "HTTP CSIC 2010, CSV export from github.com/msudol/Web-Application-Attack-Datasets"
+    },
+    "httpparams": {
+      "train": 20712,
+      "test": 10355,
+      "attack_share": 0.3786,
+      "source": "github.com/Morzeux/HttpParamsDataset (MIT)"
+    }
+  },
+  "comparison": [
+    {
+      "name": "Complement Naive Bayes",
+      "csic2010_test": {
+        "precision": 1.0,
+        "recall": 0.3538,
+        "f1": 0.5227,
+        "roc_auc": 0.7529,
+        "pr_auc": 0.8663,
+        "confusion_matrix": [
+          [
+            2406,
+            0
+          ],
+          [
+            2579,
+            1412
+          ]
+        ],
+        "n": 6397
+      },
+      "httpparams_test": {
+        "precision": 0.9997,
+        "recall": 0.9964,
+        "f1": 0.9981,
+        "roc_auc": 0.9995,
+        "pr_auc": 0.9994,
+        "confusion_matrix": [
+          [
+            6433,
+            1
+          ],
+          [
+            14,
+            3907
+          ]
+        ],
+        "n": 10355
+      },
+      "selected": false
+    },
+    {
+      "name": "Logistic Regression",
+      "csic2010_test": {
+        "precision": 1.0,
+        "recall": 0.4422,
+        "f1": 0.6133,
+        "roc_auc": 0.7824,
+        "pr_auc": 0.8881,
+        "confusion_matrix": [
+          [
+            2406,
+            0
+          ],
+          [
+            2226,
+            1765
+          ]
+        ],
+        "n": 6397
+      },
+      "httpparams_test": {
+        "precision": 0.9997,
+        "recall": 0.9957,
+        "f1": 0.9977,
+        "roc_auc": 0.9995,
+        "pr_auc": 0.9994,
+        "confusion_matrix": [
+          [
+            6433,
+            1
+          ],
+          [
+            17,
+            3904
+          ]
+        ],
+        "n": 10355
+      },
+      "selected": true
+    },
+    {
+      "name": "Linear SVM (calibrated)",
+      "csic2010_test": {
+        "precision": 0.998,
+        "recall": 0.5091,
+        "f1": 0.6743,
+        "roc_auc": 0.7781,
+        "pr_auc": 0.8858,
+        "confusion_matrix": [
+          [
+            2402,
+            4
+          ],
+          [
+            1959,
+            2032
+          ]
+        ],
+        "n": 6397
+      },
+      "httpparams_test": {
+        "precision": 0.9956,
+        "recall": 0.9885,
+        "f1": 0.9921,
+        "roc_auc": 0.9994,
+        "pr_auc": 0.9993,
+        "confusion_matrix": [
+          [
+            6417,
+            17
+          ],
+          [
+            45,
+            3876
+          ]
+        ],
+        "n": 10355
+      },
+      "selected": false
+    }
+  ],
+  "cross_dataset_generalisation": {
+    "train": "CSIC 2010 only",
+    "test": "HttpParams test split",
+    "precision": 0.9971,
+    "recall": 0.7957,
+    "f1": 0.8851,
+    "roc_auc": 0.9978,
+    "pr_auc": 0.9965,
+    "confusion_matrix": [
+      [
+        6425,
+        9
+      ],
+      [
+        801,
+        3120
+      ]
+    ],
+    "n": 10355
+  },
+  "attack_type_report": {
+    "cmdi": {
+      "precision": 0.9666666666666667,
+      "recall": 0.9666666666666667,
+      "f1-score": 0.9666666666666667,
+      "support": 30.0
+    },
+    "path-traversal": {
+      "precision": 1.0,
+      "recall": 0.9893617021276596,
+      "f1-score": 0.9946524064171123,
+      "support": 94.0
+    },
+    "sqli": {
+      "precision": 0.9997235277854576,
+      "recall": 1.0,
+      "f1-score": 0.9998617447808654,
+      "support": 3616.0
+    },
+    "xss": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 177.0
+    },
+    "macro avg": {
+      "precision": 0.9915975486130311,
+      "recall": 0.9890070921985816,
+      "f1-score": 0.9902952044661611,
+      "support": 3917.0
+    },
+    "weighted avg": {
+      "precision": 0.9994894757396515,
+      "recall": 0.9994894051570079,
+      "f1-score": 0.9994887401916819,
+      "support": 3917.0
+    }
+  },
+  "limitations": [
+    "CSIC 2010 traffic was generated against a single e-commerce application in 2010; real traffic will differ.",
+    "CSIC 'anomalous' requests include unusual-but-benign values, which lowers achievable precision.",
+    "The classifier inspects URL parameter values only; request bodies are not present in gateway access logs."
+  ]
+}

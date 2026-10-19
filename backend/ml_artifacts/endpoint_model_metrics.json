@@ -1,0 +1,315 @@
+{
+  "model": "endpoint_intelligence",
+  "trained_at": "2026-10-19T05:56:15.925747+00:00",
+  "dataset": {
+    "source": "APIs.guru openapi-directory (github.com/APIs-guru/openapi-directory)",
+    "operations": 84471,
+    "providers": 682,
+    "apis": 2616,
+    "deprecated_rate": 0.0125,
+    "sensitive_rate": 0.2305,
+    "deprecation_rate_by_newer_version_exists": [
+      {
+        "newer_version_exists": 0,
+        "mean": 0.0121,
+        "count": 84355
+      },
+      {
+        "newer_version_exists": 1,
+        "mean": 0.3276,
+        "count": 116
+      }
+    ]
+  },
+  "features": "TF-IDF over method, path depth, parameter positions, version segment and camel/snake-split path words; plus 'newer_version_exists'",
+  "evaluation": "GroupShuffleSplit by provider (25% of providers held out entirely); threshold chosen on an inner provider-held-out validation split",
+  "tasks": {
+    "legacy": {
+      "label": "deprecated",
+      "selected_model": "Gradient Boosting (structural)",
+      "selection_rule": "highest ROC-AUC on held-out providers (PR-AUC is unstable with ~100 held-out positives)",
+      "threshold": 0.5479247731433722,
+      "train_rows": 54066,
+      "test_rows": 30405,
+      "train_providers": 511,
+      "test_providers": 171,
+      "comparison": [
+        {
+          "name": "Gradient Boosting (structural)",
+          "threshold": 0.5479,
+          "precision": 0.0057,
+          "recall": 0.9554,
+          "f1": 0.0113,
+          "roc_auc": 0.7234,
+          "pr_auc": 0.0125,
+          "base_rate": 0.0037,
+          "pr_auc_lift_over_random": 3.39,
+          "confusion_matrix": [
+            [
+              11534,
+              18759
+            ],
+            [
+              5,
+              107
+            ]
+          ],
+          "n_test": 30405,
+          "selected": true
+        },
+        {
+          "name": "Logistic Regression (structural)",
+          "threshold": 0.3484,
+          "precision": 0.0045,
+          "recall": 0.7589,
+          "f1": 0.009,
+          "roc_auc": 0.5761,
+          "pr_auc": 0.0134,
+          "base_rate": 0.0037,
+          "pr_auc_lift_over_random": 3.64,
+          "confusion_matrix": [
+            [
+              11537,
+              18756
+            ],
+            [
+              27,
+              85
+            ]
+          ],
+          "n_test": 30405,
+          "selected": false
+        }
+      ],
+      "features": [
+        "newer_version_exists",
+        "has_version",
+        "path_version",
+        "versions_in_service",
+        "resource_versions",
+        "is_delete"
+      ],
+      "negative_baseline_path_vocabulary": [
+        {
+          "name": "Logistic Regression",
+          "threshold": 0.0002,
+          "precision": 0.0037,
+          "recall": 1.0,
+          "f1": 0.0074,
+          "roc_auc": 0.4173,
+          "pr_auc": 0.0037,
+          "base_rate": 0.0037,
+          "pr_auc_lift_over_random": 1.02,
+          "confusion_matrix": [
+            [
+              64,
+              30229
+            ],
+            [
+              0,
+              112
+            ]
+          ],
+          "n_test": 30405,
+          "selected": false
+        },
+        {
+          "name": "Complement Naive Bayes",
+          "threshold": 0.624,
+          "precision": 0.0015,
+          "recall": 0.0268,
+          "f1": 0.0029,
+          "roc_auc": 0.4016,
+          "pr_auc": 0.0028,
+          "base_rate": 0.0037,
+          "pr_auc_lift_over_random": 0.77,
+          "confusion_matrix": [
+            [
+              28339,
+              1954
+            ],
+            [
+              109,
+              3
+            ]
+          ],
+          "n_test": 30405,
+          "selected": false
+        },
+        {
+          "name": "Random Forest",
+          "threshold": 0.3356,
+          "precision": 0.0019,
+          "recall": 0.0625,
+          "f1": 0.0036,
+          "roc_auc": 0.4299,
+          "pr_auc": 0.003,
+          "base_rate": 0.0037,
+          "pr_auc_lift_over_random": 0.81,
+          "confusion_matrix": [
+            [
+              26527,
+              3766
+            ],
+            [
+              105,
+              7
+            ]
+          ],
+          "n_test": 30405,
+          "selected": true
+        }
+      ]
+    },
+    "sensitive": {
+      "label": "sensitive",
+      "selected_model": "Random Forest",
+      "selection_rule": "highest ROC-AUC on held-out providers (PR-AUC is unstable with ~100 held-out positives)",
+      "threshold": 0.1348368364408703,
+      "train_rows": 54066,
+      "test_rows": 30405,
+      "train_providers": 511,
+      "test_providers": 171,
+      "comparison": [
+        {
+          "name": "Logistic Regression",
+          "threshold": 0.2622,
+          "precision": 0.2149,
+          "recall": 0.5709,
+          "f1": 0.3123,
+          "roc_auc": 0.6593,
+          "pr_auc": 0.2575,
+          "base_rate": 0.145,
+          "pr_auc_lift_over_random": 1.78,
+          "confusion_matrix": [
+            [
+              16803,
+              9193
+            ],
+            [
+              1892,
+              2517
+            ]
+          ],
+          "n_test": 30405,
+          "selected": false
+        },
+        {
+          "name": "Complement Naive Bayes",
+          "threshold": 0.1125,
+          "precision": 0.1741,
+          "recall": 0.843,
+          "f1": 0.2886,
+          "roc_auc": 0.6449,
+          "pr_auc": 0.2312,
+          "base_rate": 0.145,
+          "pr_auc_lift_over_random": 1.59,
+          "confusion_matrix": [
+            [
+              8365,
+              17631
+            ],
+            [
+              692,
+              3717
+            ]
+          ],
+          "n_test": 30405,
+          "selected": false
+        },
+        {
+          "name": "Random Forest",
+          "threshold": 0.1348,
+          "precision": 0.175,
+          "recall": 0.8796,
+          "f1": 0.292,
+          "roc_auc": 0.6654,
+          "pr_auc": 0.2592,
+          "base_rate": 0.145,
+          "pr_auc_lift_over_random": 1.79,
+          "confusion_matrix": [
+            [
+              7717,
+              18279
+            ],
+            [
+              531,
+              3878
+            ]
+          ],
+          "n_test": 30405,
+          "selected": true
+        }
+      ],
+      "top_terms": {
+        "most_important": [
+          [
+            "atservices",
+            0.0522
+          ],
+          [
+            "rest",
+            0.0405
+          ],
+          [
+            "method_delete",
+            0.027
+          ],
+          [
+            "param",
+            0.0257
+          ],
+          [
+            "has_version",
+            0.0238
+          ],
+          [
+            "method_get",
+            0.0218
+          ],
+          [
+            "version_1",
+            0.0199
+          ],
+          [
+            "repos",
+            0.0197
+          ],
+          [
+            "information",
+            0.0163
+          ],
+          [
+            "query",
+            0.0161
+          ],
+          [
+            "certificate",
+            0.0147
+          ],
+          [
+            "api",
+            0.0142
+          ],
+          [
+            "method_post",
+            0.0141
+          ],
+          [
+            "params_0",
+            0.0131
+          ],
+          [
+            "entity",
+            0.0122
+          ]
+        ]
+      }
+    }
+  },
+  "limitations": [
+    "Publishers mark only a small fraction of retired operations as deprecated, so 'legacy' labels are incomplete (positive-unlabelled).",
+    "The sensitivity label is derived from documented schema field names, not from observed data.",
+    "Public APIs over-represent large cloud providers (e.g. azure.com, amazonaws.com)."
+  ]
+}
