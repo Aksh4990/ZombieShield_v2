@@ -88,11 +88,26 @@ def seed_sources() -> None:
         db.commit()
 
 
+def follower_may_run(db) -> bool:
+    """Follow logs only between pipeline runs, and only after the first successful run.
+
+    Before the first discovery no code/spec route templates are known, so live requests would be
+    stored under raw paths (e.g. /catalogue instead of /catalogue*) and show up as shadow APIs. While a
+    run is in progress the pipeline reads the same log files, and two readers would ingest the same
+    lines twice. In both cases the pipeline's own discovery stage picks the lines up instead.
+    """
+    if db.scalar(select(PipelineRun.id).where(PipelineRun.status.in_(["QUEUED", "RUNNING"])).limit(1)) is not None:
+        return False
+    return db.scalar(select(PipelineRun.id).where(PipelineRun.status == "SUCCEEDED").limit(1)) is not None
+
+
 def _follow_logs() -> None:
     interval = get_settings().log_follow_interval_seconds
     while not _stop.wait(interval):
         try:
             with SessionLocal() as db:
+                if not follower_may_run(db):
+                    continue
                 sources = list(db.scalars(select(Source).where(Source.enabled.is_(True), Source.kind == "runtime_log")))
                 followed = [s for s in sources if (s.options or {}).get("follow")]
                 if not followed:

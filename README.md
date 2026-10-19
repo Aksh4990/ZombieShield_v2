@@ -13,6 +13,9 @@ ZombieShield builds a single inventory of every API operation an organisation ex
 Each classification records its evidence, for example: *"Removed from source in commit 12317157 by A. Giurgiu on 2017-03-07 … runtime traffic continues (14 requests)"*.
 ZombieShield works only from evidence it is given. It never sends requests to the APIs it inventories.
 
+## Quick demo (Windows)
+Install and start **Docker Desktop** (and Git), then double-click **`demo.cmd`**. It creates `.env`, downloads the Sock Shop repositories, builds and starts everything, generates demo traffic, runs the pipeline and opens the dashboard at http://localhost:5173. The walkthrough is in [`docs/DEMO.md`](docs/DEMO.md). `demo-stop.cmd` stops it.
+
 ## What is in v2
 * **Discovery:**
   * OpenAPI 3 and Swagger 2.0 (including `deprecated` and `security`)
@@ -31,7 +34,8 @@ ZombieShield works only from evidence it is given. It never sends requests to th
   * one-click pipeline with live progress (server-sent events)
   * recommendation-only decision engine
 * **Validation:** `POST /validation/run` scores the lifecycle classifications against a hand-written ground truth (`sockshop/ground_truth.template.json`).
-* **Team extension slots** for security-control evidence, risk scoring and remediation (see `docs/EXTENSIONS.md`).
+* **Security controls, risk and remediation** (`docs/EXTENSIONS.md`): per-API control evidence mapped to the OWASP API Top 10 (2023), an explainable 0–100 risk score, and nginx gateway rules (block, require credentials, rate limit, deprecation headers) that a person approves, applies, verifies and can roll back.
+* **Dashboard** (React): inventory, endpoint evidence, pipeline, remediation workflow, vulnerabilities, traffic, sources, model cards and validation, users and audit log.
 
 ## Run it
 ```powershell
@@ -43,7 +47,8 @@ To run against the Sock Shop reference deployment as well:
 .\scripts\setup_sockshop.ps1                    # clones the 7 service repositories with history
 docker compose --profile sockshop up --build
 ```
-* API and interactive docs: http://localhost:8000/docs (log in with the admin or analyst account from `.env`)
+* Dashboard: http://localhost:5173 (log in with the admin or analyst account from `.env`)
+* API and interactive docs: http://localhost:8000/docs
 * Sock Shop through the logging gateway: http://localhost:8079
 * Start a run: `POST /pipeline/run`, then follow `GET /pipeline/runs/{id}/stream`
 

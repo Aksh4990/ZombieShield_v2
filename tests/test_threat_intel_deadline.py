@@ -162,3 +162,18 @@ def test_failed_stage_with_huge_error_is_recorded(monkeypatch):
         assert stored.status == "FAILED"
         assert len(stored.error) <= pipeline.RUN_ERROR_LIMIT and "truncated" in stored.error
         assert len(stored.stages[0]["error"]) <= pipeline.STAGE_ERROR_LIMIT
+
+
+def test_log_follower_waits_for_first_run_and_pauses_during_runs():
+    from app.db.session import SessionLocal
+    from app.models import PipelineRun
+    from app.services import bootstrap
+
+    with SessionLocal() as db:
+        assert not bootstrap.follower_may_run(db)  # nothing discovered yet: route templates unknown
+        db.add(PipelineRun(status="SUCCEEDED", triggered_by="t", stages=[]))
+        db.commit()
+        assert bootstrap.follower_may_run(db)
+        db.add(PipelineRun(status="RUNNING", triggered_by="t", stages=[]))
+        db.commit()
+        assert not bootstrap.follower_may_run(db)  # the pipeline is reading the same logs
