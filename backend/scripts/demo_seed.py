@@ -120,12 +120,16 @@ def main() -> int:
     api.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
 
     existing = {s["name"]: s for s in api.get("/sources").json()}
+    # APIs are identified per organisation: the history must use the same one as the Sock Shop sources,
+    # otherwise its requests would become separate (shadow) endpoints instead of joining the real ones.
+    organization = next((s["organization"] for s in existing.values() if s["kind"] == "runtime_log"),
+                        next((s["organization"] for s in existing.values() if s["kind"] == "git"), "sockshop"))
     if "demo-history-gateway (synthetic)" not in existing:
         gateway_log, orders_log = write_history()
         for name, path, service, host in (("demo-history-gateway (synthetic)", gateway_log, "front-end", "front-end"),
                                           ("demo-history-orders (synthetic)", orders_log, "orders", "orders")):
             api.post("/sources", json={"name": name, "kind": "runtime_log", "location": str(path), "service_name": service,
-                                       "host": host, "options": {}}).raise_for_status()
+                                       "host": host, "organization": organization, "options": {}}).raise_for_status()
         say("- Registered 45 minutes of synthetic shopper history (24 clients, one legacy mobile app, internal orders calls)")
     else:
         say("- Synthetic history already registered")
