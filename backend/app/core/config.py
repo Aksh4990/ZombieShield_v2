@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     osv_api_url: str = "https://api.osv.dev/v1"
     kev_feed_url: str = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
     epss_api_url: str = "https://api.first.org/data/v1/epss"
+    # Wall-clock budget for all online feed calls in one threat-intel run; when it runs out the stage
+    # falls back to the offline cache instead of waiting (httpx timeouts only bound gaps between bytes).
+    threat_intel_timeout_seconds: float = 90.0
 
     # Machine learning
     ml_artifacts_dir: str = str(BACKEND_ROOT / "ml_artifacts")

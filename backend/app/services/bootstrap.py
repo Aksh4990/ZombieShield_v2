@@ -11,13 +11,37 @@ from sqlalchemy import select
 from app.core.config import BACKEND_ROOT, get_settings
 from app.core.security import hash_password
 from app.db.session import SessionLocal
-from app.models import Source, User
+from app.models import PipelineRun, Source, User
 from app.services import traffic
 from app.services.discovery.runner import run_log_source
 from app.services.inventory import InventoryWriter
 
 log = logging.getLogger(__name__)
 _stop = threading.Event()
+
+
+def recover_interrupted_runs() -> int:
+    """Mark runs left QUEUED/RUNNING by a previous backend process as FAILED.
+
+    Runs execute in a thread of this process, so after a restart nothing will ever finish them, and an
+    open run would block every new run with 409. Safe because the backend runs a single worker.
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        runs = list(db.scalars(select(PipelineRun).where(PipelineRun.status.in_(["QUEUED", "RUNNING"]))))
+        for run in runs:
+            stages = [dict(stage) for stage in run.stages or []]
+            for stage in stages:
+                if stage.get("status") == "RUNNING":
+                    stage.update(status="FAILED", finished_at=now.isoformat(), error="interrupted by a backend restart")
+            run.stages, run.status, run.finished_at = stages, "FAILED", now
+            run.error = "The backend restarted while this run was in progress; start a new run."
+        db.commit()
+    if runs:
+        log.warning("Marked %d interrupted pipeline run(s) as FAILED", len(runs))
+    return len(runs)
 
 
 def seed_users() -> None:

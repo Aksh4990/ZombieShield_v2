@@ -18,6 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 async def lifespan(_: FastAPI):
     if engine.dialect.name == "sqlite":
         Base.metadata.create_all(bind=engine)  # local runs and tests; PostgreSQL uses Alembic migrations
+    bootstrap.recover_interrupted_runs()
     bootstrap.seed_users()
     bootstrap.seed_threat_cache()
     bootstrap.seed_sources()

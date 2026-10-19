@@ -49,23 +49,26 @@ def correlate(db: Session) -> dict:
     components = collect_components(db)
     packages = [(c.ecosystem, c.name, c.version) for c in components]
     mode = settings.threat_intel_mode
+    until = feeds.deadline()
     used = "offline cache"
     results: list[list[tuple[dict, list[str]]]] = []
     if packages and mode in {"online", "auto"}:
         try:
-            results = feeds.query_online(packages)
+            results = feeds.query_online(packages, until)
             used = "OSV.dev API"
         except httpx.HTTPError as exc:
             if mode == "online":
                 raise
-            log.info("OSV.dev unreachable (%s); falling back to offline cache", exc)
+            log.warning("OSV.dev unavailable or too slow (%s); falling back to offline cache", exc)
             results = []
+            if mode == "auto":
+                until = feeds.deadline(min(30.0, settings.threat_intel_timeout_seconds))  # small budget left for KEV / EPSS
     if not results:
         results = [feeds.query_offline(*package) for package in packages]
         used = "offline OSV cache (GitHub Advisory Database export)" if feeds.offline_available() else "none (no feed reachable and no offline cache)"
 
     db.execute(delete(ThreatFinding))
-    kev = feeds.kev_catalogue()
+    kev = feeds.kev_catalogue(until)
     vulnerabilities: dict[str, Vulnerability] = {v.id: v for v in db.scalars(select(Vulnerability))}
     finding_count = 0
     for component, matches in zip(components, results):
@@ -94,7 +97,7 @@ def correlate(db: Session) -> dict:
             finding_count += 1
     db.flush()
     cves = sorted({alias for v in vulnerabilities.values() for alias in v.aliases if alias.startswith("CVE-")})
-    scores = feeds.epss_scores(cves) if cves else {}
+    scores = feeds.epss_scores(cves, until) if cves else {}
     for vuln in vulnerabilities.values():
         cve = next((a for a in vuln.aliases if a.startswith("CVE-")), None)
         if cve in scores:
