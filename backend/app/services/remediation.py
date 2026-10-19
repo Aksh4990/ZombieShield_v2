@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import API, Decision, LifecycleState, RemediationAction, RequestLog
 from app.services import gateway
-from app.services.controls import suspicious_clients
+from app.services.controls import BOLA_IDS_PER_CLIENT, RATE_LIMIT_EXPECTED_RPM, suspicious_clients
 
 KINDS = ("BLOCK_ROUTE", "REQUIRE_AUTH", "RATE_LIMIT", "DEPRECATION_HEADERS")
 HUMAN_STATES = {"APPROVED", "APPLIED", "VERIFIED", "REJECTED", "ROLLED_BACK"}
@@ -65,18 +65,33 @@ def _priority(api: API) -> str:
 
 
 def _client_minute_counts(db: Session) -> dict:
-    """api_id -> {(client, minute): requests} for clients without a named attack pattern."""
+    """api_id -> {(client, minute): requests} for the clients that define "normal" use of each endpoint.
+
+    Excluded: clients with a named attack pattern (anomaly model) and, per endpoint, clients that
+    enumerated object IDs or flooded it. Otherwise a lab with one attacker and few real users would
+    derive the limit from the attack itself (seen on the first Docker run: 164 requests/minute).
+    """
     flagged = set(suspicious_clients(db))
     counts: dict = defaultdict(lambda: defaultdict(int))
-    query = select(RequestLog.api_id, RequestLog.client_hash, RequestLog.ts).where(RequestLog.api_id.is_not(None))
-    for api_id, client, ts in db.execute(query).yield_per(5000):
-        if client and client not in flagged:
-            counts[api_id][(client, int(_utc(ts).timestamp()) // 60)] += 1
+    ids: dict = defaultdict(lambda: defaultdict(set))
+    query = select(RequestLog.api_id, RequestLog.client_hash, RequestLog.ts, RequestLog.raw_id, RequestLog.status).where(RequestLog.api_id.is_not(None))
+    for api_id, client, ts, raw_id, status in db.execute(query).yield_per(5000):
+        if not client or client in flagged:
+            continue
+        key = (client, int(_utc(ts).timestamp()) // 60)
+        counts[api_id][key] += 1
+        if raw_id and 200 <= status < 300:
+            ids[api_id][key].add(raw_id)
+    for api_id, per_minute in counts.items():
+        abusive = {client for (client, minute), n in per_minute.items()
+                   if n >= RATE_LIMIT_EXPECTED_RPM or len(ids[api_id].get((client, minute), ())) >= BOLA_IDS_PER_CLIENT}
+        if abusive:
+            counts[api_id] = defaultdict(int, {key: n for key, n in per_minute.items() if key[0] not in abusive})
     return counts
 
 
 def suggested_rate(minute_counts: dict | None) -> tuple[int, int, str]:
-    """Twice the 95th percentile of per-client requests per minute from non-suspicious clients (floor 30/min)."""
+    """Twice the 95th percentile of per-client requests per minute from normal clients (floor 30/min)."""
     values = sorted((minute_counts or {}).values())
     if not values:
         return 60, 30, "no normal-client baseline; default 60 requests/minute"

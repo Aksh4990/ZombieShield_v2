@@ -312,3 +312,15 @@ def test_approval_workflow_writes_and_verifies_gateway_rules(client, analyst, ad
     assert "location" not in (rules_dir / gateway.LOCATIONS_FILE).read_text()
     audit = client.get("/audit", headers=admin_headers).json()
     assert {"remediation.approve", "remediation.apply", "remediation.verify", "remediation.rollback"} <= {e["action"] for e in audit}
+
+
+def test_rate_baseline_ignores_the_enumerating_client():
+    """Regression from the first Docker run: with one attacker and little real traffic, the attack set the limit."""
+    with SessionLocal() as db:
+        api = make_api(db, path="/customers/{id}")
+        add_requests(db, api, 41, client="attacker", ids=[str(i) for i in range(41)], spacing=timedelta(seconds=1))
+        add_requests(db, api, 3, client="shopper", ids=["7"], spacing=timedelta(seconds=20))
+        db.commit()
+        counts = remediation._client_minute_counts(db)[api.id]
+        assert {client for client, _ in counts} == {"shopper"}
+        assert remediation.suggested_rate(counts)[0] == remediation.MIN_RATE_PER_MINUTE
