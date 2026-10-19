@@ -43,7 +43,6 @@ python scripts/train_endpoint_model.py
 - API routes (`api/routers/`), `main.py`, startup seeding, background log follower
 - Alembic migration `0001`, Dockerfile, `docker-compose.yml` with an optional Sock Shop profile (logging gateway + official load generator)
 - Offline vulnerability cache for the Sock Shop repos (`backend/data/threat_cache`)
-- Tests: `python -m pytest -q` (24 passing)
 - Validation scoring (stage 13): `POST /validation/run` with your ground-truth JSON (template: `sockshop/ground_truth.template.json`) returns accuracy, macro-F1, per-class and zombie-or-shadow precision/recall/F1 and a confusion matrix; `GET /validation/runs` lists past runs
 - Paper revision guide with all final figures: `docs/PAPER_REVISION.md`
 
@@ -52,12 +51,17 @@ python scripts/train_endpoint_model.py
 - With a normal-traffic log fixture: front-end `PUT /cart/{id}` (removed 2017) classified **ZOMBIE**, orders `GET /orders/search/customerId` (Spring Data REST, in no code or spec) classified **SHADOW**
 - Real CVEs matched in front-end's npm dependencies (e.g. morgan 1.7.0, CVSS 9.8)
 
-## Left for the team (see `docs/EXTENSIONS.md`)
-- Stage 6 security-control evidence → `backend/app/services/controls.py`
-- Stage 7 risk scoring → `backend/app/services/risk.py`
-- Stage 9 remediation → `backend/app/services/remediation.py`
+## Stages 6, 7 and 9 (security controls, risk, remediation)
+- `services/controls.py` (stage 6): per-API control evidence (authentication, object-level authorization, input validation, rate limiting, inventory, gateway rules) with statuses ENFORCED / DECLARED / NOT_ENFORCED / NOT_OBSERVED / NOT_REQUIRED / UNKNOWN, each backed by evidence, mapped to OWASP API Top 10 (2023). Public endpoints (anonymous by design) are told apart from protected ones that leak.
+- `services/risk.py` (stage 7): additive, capped 0-100 score; every point is a `{factor, points, evidence}` entry (lifecycle exposure, access control, ML sensitivity, KEV/CVSS/EPSS, accepted attacks, suspicious clients, reach) with discounts for decommissioned endpoints and verified gateway rules. Levels align with the decision engine (>=75 CRITICAL/ESCALATE, >=50 HIGH/REMEDIATE).
+- `services/remediation.py` + `services/gateway.py` (stage 9): proposes BLOCK_ROUTE (410), REQUIRE_AUTH (401), RATE_LIMIT (429, rate derived from normal clients) and DEPRECATION_HEADERS; approval workflow PROPOSED -> APPROVED -> APPLIED -> VERIFIED (or REJECTED / ROLLED_BACK); applying renders nginx rules into `GATEWAY_RULES_DIR`; verification checks traffic seen after applying.
+- API: `GET /remediation`, `GET /remediation/{id}`, `GET /remediation/gateway-config`, `POST /remediation/{id}/{approve|reject|apply|verify|rollback|reopen}` (approve/apply/rollback: admin). Dashboard summary now includes `risk_levels` and `remediation` counts.
+- Sock Shop gateway reloads itself when rules change (`sockshop/gateway/reload-on-change.sh`, guarded by `nginx -t`).
+- Verified on the real Sock Shop repos plus the log fixture with an added attacker: unauthenticated BOLA enumeration on `GET /customers/{id}` scores CRITICAL (REQUIRE_AUTH + RATE_LIMIT proposed), zombie `PUT /cart/{id}` scores HIGH (BLOCK_ROUTE proposed), public catalogue is not asked to require auth; generated rules pass `nginx -t` and were exercised in a live nginx (410 / 401 / 429 as expected).
+- Tests: `python -m pytest -q` (37 passing)
 
 ## Still to do
+- The traffic anomaly model (IsolationForest, contamination "auto") flags every client in the Sock Shop fixture as UNUSUAL_BEHAVIOUR at least once; stages 6-9 therefore only treat named attack patterns as suspicious. Tuning the anomaly baseline/contamination would make `anomalous_client_count` meaningful again.
 - Frontend (stage 12): the `frontend/` folder is still the old UI
 - Write `sockshop/ground_truth.json` by hand and run the validation
 - Run the Docker setup on your machine (not tested here: no Docker in my workspace)

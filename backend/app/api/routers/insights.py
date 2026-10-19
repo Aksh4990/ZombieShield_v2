@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import DB, CurrentUser, admin, viewer
-from app.models import API, AnomalyEvent, AuditLog, Component, Decision, LifecycleState, PipelineRun, RequestLog, ThreatFinding, Vulnerability
+from app.models import API, AnomalyEvent, AuditLog, Component, Decision, LifecycleState, PipelineRun, RemediationAction, RequestLog, ThreatFinding, Vulnerability
 from app.schemas import AnomalyRead, AuditRead, ComponentRead, DecisionRead, RequestRead, VulnerabilityRead
 from app.services import traffic
 from app.services.ml import endpoint_model, payload_model
@@ -74,7 +74,7 @@ def summary(db: Session = DB, _: CurrentUser = Depends(viewer)) -> dict:
         services[api.service_name][api.lifecycle_state.value] += 1
     kev = db.scalar(select(func.count()).select_from(Vulnerability).where(Vulnerability.in_kev.is_(True))) or 0
     vuln_count = db.scalar(select(func.count(func.distinct(ThreatFinding.vulnerability_id)))) or 0
-    attention = sorted([api for api in apis if api.lifecycle_state in (LifecycleState.ZOMBIE, LifecycleState.SHADOW) or api.kev_count],
+    attention = sorted([api for api in apis if api.lifecycle_state in (LifecycleState.ZOMBIE, LifecycleState.SHADOW) or api.kev_count or (api.risk_score or 0) >= 50],
                        key=lambda a: (a.lifecycle_state != LifecycleState.ZOMBIE, -(a.risk_score or 0), -a.request_count))[:8]
     last_run = db.scalar(select(PipelineRun).order_by(PipelineRun.started_at.desc()).limit(1))
     return {
@@ -87,9 +87,12 @@ def summary(db: Session = DB, _: CurrentUser = Depends(viewer)) -> dict:
         "payload_attacks": db.scalar(select(func.count()).select_from(RequestLog).where(RequestLog.payload_label.is_not(None), RequestLog.payload_label != "normal")) or 0,
         "anomalous_windows": db.scalar(select(func.count()).select_from(AnomalyEvent)) or 0,
         "decisions": dict(decisions_by_action),
+        "risk_levels": dict(Counter(a.risk_level for a in apis if a.risk_level)),
+        "remediation": dict(Counter(db.scalars(select(RemediationAction.status)))),
         "services": {name: dict(counts) for name, counts in sorted(services.items())},
         "attention": [{"id": str(a.id), "method": a.http_method, "path": a.display_path, "service": a.service_name, "state": a.lifecycle_state.value,
-                       "reason": a.classification_reason, "requests": a.request_count, "kev": a.kev_count} for a in attention],
+                       "reason": a.classification_reason, "requests": a.request_count, "kev": a.kev_count,
+                       "risk_score": a.risk_score, "risk_level": a.risk_level} for a in attention],
         "last_run": {"id": str(last_run.id), "status": last_run.status, "started_at": last_run.started_at.isoformat(),
                      "finished_at": last_run.finished_at.isoformat() if last_run.finished_at else None} if last_run else None,
     }

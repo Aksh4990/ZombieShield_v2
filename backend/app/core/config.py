@@ -43,6 +43,10 @@ class Settings(BaseSettings):
 
     # Gateway (read by team-implemented stages)
     gateway_rules_dir: str = "./gateway-rules"
+    gateway_upstream: str = "http://sockshop_front_end"  # where rule locations proxy allowed requests
+    gateway_auth_variable: str = "$zs_has_auth"  # nginx variable: "1" when the request carries credentials
+    gateway_hosts: str = ""  # comma-separated API hosts served by the gateway; empty = all
+    deprecation_sunset_days: int = 90  # Sunset date proposed for deprecated endpoints still in use
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

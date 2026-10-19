@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # noqa: F401 - registers SQLAlchemy models
-from app.api.routers import auth, discovery, insights, inventory, pipeline, validation
+from app.api.routers import auth, discovery, insights, inventory, pipeline, remediation, validation
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import engine
@@ -38,5 +38,5 @@ def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-for module in (auth, inventory, discovery, pipeline, insights, validation):
+for module in (auth, inventory, discovery, pipeline, insights, remediation, validation):
     app.include_router(module.router)

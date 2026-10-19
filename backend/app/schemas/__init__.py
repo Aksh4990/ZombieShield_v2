@@ -90,6 +90,28 @@ class DecisionRead(ORM):
     decided_at: datetime
 
 
+class RemediationRead(ORM):
+    id: uuid.UUID
+    api_id: uuid.UUID
+    kind: str
+    title: str
+    rationale: str
+    priority: str
+    rule: dict
+    config_snippet: str
+    status: str
+    proposed_at: datetime
+    approved_by: str | None
+    approved_at: datetime | None
+    applied_at: datetime | None
+    verified_at: datetime | None
+    verification_note: str | None
+
+
+class RemediationStep(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class APIDetail(APISummary):
     current_sources: list[str]
     spec_security: list[str]

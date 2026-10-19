@@ -59,8 +59,8 @@ def test_full_pipeline_finds_zombie_shadow_and_deprecated(client, analyst, shop_
     state = run_pipeline(client, analyst)
     assert state["status"] == "SUCCEEDED", state["error"]
     statuses = {stage["key"]: stage["status"] for stage in state["stages"]}
-    assert statuses["controls"] == statuses["risk"] == statuses["remediation"] == "SKIPPED"
-    assert statuses["decisions"] == "SUCCEEDED"
+    assert statuses["controls"] == statuses["risk"] == statuses["remediation"] == statuses["decisions"] == "SUCCEEDED"
+    assert all(item["implemented"] for item in client.get("/pipeline/extensions", headers=analyst).json().values())
 
     apis = {(a["http_method"], a["endpoint_path"]): a for a in client.get("/apis", headers=analyst).json()}
     assert apis[("GET", "/v1/customers/{id}")]["lifecycle_state"] == "ZOMBIE"
@@ -74,6 +74,14 @@ def test_full_pipeline_finds_zombie_shadow_and_deprecated(client, analyst, shop_
     assert "removed_in_git" in kinds and "runtime_seen" in kinds
     assert "Replace v1 customers API with v2" in zombie["classification_reason"]
     assert zombie["decision"]["action"] == "REMEDIATE"
+    assert zombie["risk_score"] >= 30 and zombie["risk_level"] in ("MEDIUM", "HIGH", "CRITICAL")
+    assert any(f["factor"] == "Zombie endpoint" for f in zombie["risk_breakdown"])
+    assert any("API9:2023" in c for c in zombie["owasp_categories"])
+    assert zombie["security_controls"]["inventory"]["status"] == "NOT_ENFORCED"
+    actions = {(a["api"]["path"], a["kind"]) for a in client.get("/remediation", headers=analyst).json()}
+    assert ("/v1/customers/{customer_id}", "BLOCK_ROUTE") in actions or any(k == "BLOCK_ROUTE" and "/v1/customers/" in p for p, k in actions)
+    assert any(k == "DEPRECATION_HEADERS" and p == "/v2/legacy-report" for p, k in actions)
+    assert not any(p.startswith("/v2/customers") for p, _ in actions)  # healthy endpoint gets no gateway change
     summary = client.get("/dashboard/summary", headers=analyst).json()
     assert summary["lifecycle"]["ZOMBIE"] == 1 and summary["lifecycle"]["SHADOW"] == 1
     graph = client.get("/graph", headers=analyst).json()

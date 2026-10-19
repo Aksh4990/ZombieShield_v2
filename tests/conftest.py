@@ -15,6 +15,7 @@ os.environ.update({
     "THREAT_CACHE_DIR": str(_TMP / "threat_cache"),
     "JWT_SECRET": "test-secret-that-is-long-enough-for-hs256-signing",
     "LAB_CONFIG_PATH": "",
+    "GATEWAY_RULES_DIR": str(_TMP / "gateway-rules"),
 })
 sys.path.insert(0, str(ROOT / "backend"))
 (_TMP / "repos").mkdir()
