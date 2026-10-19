@@ -47,7 +47,8 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+        # "/api" = same-origin through the frontend's nginx proxy; set a full URL to call the backend directly
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     ports:
       - "5173:80"
     depends_on:

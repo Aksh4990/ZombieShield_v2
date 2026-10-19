@@ -44,7 +44,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch {
-    throw new ApiError(0, `Can't reach the ZombieShield backend at ${API_BASE}. Check that the backend container is running.`)
+    throw new ApiError(0, `Can't reach the ZombieShield backend at ${API_BASE}. Check that the backend container is running and healthy.`)
   }
   if (response.status === 401 && session) {
     setSession(null)
